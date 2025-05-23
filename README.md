@@ -41,7 +41,8 @@ local wezterm = require('wezterm')
 local config = {}
 
 -- Import the plugin
-local override_user_var = wezterm.plugin.require('https://github.com/mrboen94/wezterm-config.nvim/plugin/init.lua').override_user_var
+local override_user_var = wezterm.plugin.require("https://github.com/mrboen94/wezterm-config.nvim").override_user_var
+
 
 wezterm.on("user-var-changed", function(window, pane, name, value)
     local overrides = window:get_config_overrides() or {}
