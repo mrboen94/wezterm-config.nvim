@@ -30,18 +30,18 @@ Using [folke/lazy.nvim](https://github.com/folke/lazy.nvim)
 
 ### Wezterm
 
-You can either integrate the plugin directly in your `wezterm.lua` or keep it in a separate file.
+You can install the Wezterm side of the plugin in one of two ways:
 
-#### Option 1: Direct Integration
+#### Option 1: Using Wezterm's Plugin System (Recommended)
 
-In your `wezterm.lua`:
+Wezterm has a built-in system for incorporating remote plugins. Add this to your `wezterm.lua`:
 
 ```lua
 local wezterm = require('wezterm')
 local config = {}
 
--- Import the override_user_var function from the plugin
-local override_user_var = require('plugin/init').override_user_var
+-- Import the plugin
+local override_user_var = wezterm.plugin.require('https://github.com/mrboen94/wezterm-config.nvim/plugin/init.lua').override_user_var
 
 wezterm.on("user-var-changed", function(window, pane, name, value)
     local overrides = window:get_config_overrides() or {}
@@ -52,7 +52,7 @@ end)
 return config
 ```
 
-#### Option 2: Separate Configuration
+#### Option 2: Manual Integration
 
 If you prefer to keep the plugin configuration separate, create a file named `wezterm_plugin.lua`:
 
