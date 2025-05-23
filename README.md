@@ -30,85 +30,63 @@ Using [folke/lazy.nvim](https://github.com/folke/lazy.nvim)
 
 ### Wezterm
 
-Create a file named `wezterm_config_nvim.lua` in the same directory as your `wezterm.lua` (or in a subdirectory like `lua/`) with the following content:
+You can either integrate the plugin directly in your `wezterm.lua` or keep it in a separate file.
 
-```lua
-local wezterm = require('wezterm')
-local M = {}
+#### Option 1: Direct Integration
 
--- Import the override_user_var function from the plugin
-M.override_user_var = require('plugin/init').override_user_var
-
-return M
-```
-
-Then in your main `wezterm.lua`, set up the configuration like this:
+In your `wezterm.lua`:
 
 ```lua
 local wezterm = require('wezterm')
 local config = {}
 
--- If wezterm_config_nvim.lua is in the same directory as your wezterm.lua:
-local wezterm_config_nvim = require('wezterm_config_nvim')
--- If it's in a subdirectory, e.g., 'lua/', use:
--- local wezterm_config_nvim = require('lua.wezterm_config_nvim')
-
--- Make sure to load other parts of your config here, for example:
--- config.font = wezterm.font("JetBrains Mono") -- Your default font
+-- Import the override_user_var function from the plugin
+local override_user_var = require('plugin/init').override_user_var
 
 wezterm.on("user-var-changed", function(window, pane, name, value)
     local overrides = window:get_config_overrides() or {}
-    wezterm.log_info("--- User Var Changed ---")
-    wezterm.log_info("Name:", name, "| Value:", value, "| Type of value:", type(value))
-    wezterm.log_info("Overrides before change:", overrides)
-
-    if name == "font" then
-        -- For the 'font' key, Wezterm expects a font object or a font name string.
-        -- The 'value' from the user-var is the font name string (e.g., "JetBrains Mono").
-        -- It's generally best to create a font object using wezterm.font().
-        local font_obj = wezterm.font(value)
-        if font_obj then
-             overrides.font = font_obj -- Use the literal key "font"
-             wezterm.log_info("Applied FONT override. New overrides.font:", overrides.font)
-        else
-            wezterm.log_error("Failed to create font object for value:", value)
-        end
-    elseif name == "font_size" then -- Example of a numeric override
-        local size = tonumber(value)
-        if size then
-            overrides.font_size = size
-            wezterm.log_info("Applied FONT_SIZE override. New overrides.font_size:", overrides.font_size)
-        else
-            wezterm.log_error("Invalid font_size value:", value, "- not a number.")
-        end
-    else
-        -- For all other variables, use the generic override function from the module.
-        -- 'name' is the config key (e.g., "enable_ligatures", "window_padding").
-        -- 'value' is the string to be parsed by the override_user_var function.
-        wezterm.log_info("Applying generic override for key:", name)
-        overrides = wezterm_config_nvim.override_user_var(overrides, name, value)
-        wezterm.log_info("Value for '", name, "' in overrides after generic processing:", overrides[name])
-    end
-
-    wezterm.log_info("Final overrides before applying to window:", overrides)
+    overrides = override_user_var(overrides, name, value)
     window:set_config_overrides(overrides)
-    wezterm.log_info("--- End User Var Changed ---")
 end)
-
--- Add other configurations and return the config table
--- For example:
--- config.color_scheme = "Catppuccin Mocha"
--- config.font_size = 12.0
--- ... etc.
 
 return config
 ```
 
-This setup provides enhanced logging and special handling for font-related configurations, while maintaining compatibility with all other configuration options through the generic override function.
+#### Option 2: Separate Configuration
 
-### Putting it all together
+If you prefer to keep the plugin configuration separate, create a file named `wezterm_plugin.lua`:
 
-Simple key-value style (like `config.font_size` or `config.hide_tab_bar_if_only_one_tab`) config overrides should work out-of-the-box. Here's an example of how to override various Wezterm settings from inside of Neovim:
+```lua
+local wezterm = require('wezterm')
+local M = {}
+
+M.override_user_var = require('plugin/init').override_user_var
+
+M.setup = function(config)
+    wezterm.on("user-var-changed", function(window, pane, name, value)
+        local overrides = window:get_config_overrides() or {}
+        overrides = M.override_user_var(overrides, name, value)
+        window:set_config_overrides(overrides)
+    end)
+    return config
+end
+
+return M
+```
+
+Then in your main `wezterm.lua`:
+
+```lua
+local wezterm = require('wezterm')
+local config = {}
+
+local wezterm_plugin = require('wezterm_plugin')
+config = wezterm_plugin.setup(config)
+
+return config
+```
+
+### Usage Examples
 
 ```lua
 -- in Neovim
@@ -137,7 +115,7 @@ end)
 
 ## Tips
 
-For more complex configuration options that take Lua tables as their values (like `background`), you can pass them as JSON strings. For example:
+For more complex configuration options that take Lua tables as their values (like `background`), you can pass them as JSON strings:
 
 ```lua
 -- Set a complex background configuration
@@ -154,7 +132,38 @@ vim.keymap.set('n', '<leader><leader>b', function()
 end)
 ```
 
-You might find it helpful to be able to clear your config overrides, especially if there's been a mistake in an override resulting in some internal Wezterm error or you just want to restore defaults. This is how you can setup a Wezterm keymap to do this:
+### tmux
+
+The plugin should play nicely with [tmux](https://github.com/tmux/tmux). Make sure the following setting is in your tmux conf file, [as advised by Wez](https://wezfurlong.org/wezterm/recipes/passing-data.html#user-vars).
+
+```
+set -g allow-passthrough on
+```
+
+## Debugging
+
+### Logging
+
+To enable detailed logging for debugging, you can modify the event handler to include logging statements:
+
+```lua
+wezterm.on("user-var-changed", function(window, pane, name, value)
+    local overrides = window:get_config_overrides() or {}
+    wezterm.log_info("--- User Var Changed ---")
+    wezterm.log_info("Name:", name, "| Value:", value, "| Type of value:", type(value))
+    wezterm.log_info("Overrides before change:", overrides)
+
+    overrides = override_user_var(overrides, name, value)
+    
+    wezterm.log_info("Final overrides before applying to window:", overrides)
+    window:set_config_overrides(overrides)
+    wezterm.log_info("--- End User Var Changed ---")
+end)
+```
+
+### Clearing Overrides
+
+You might want to clear your config overrides, especially if there's been a mistake in an override. Add this to your Wezterm config:
 
 ```lua
 wezterm.on('clear-overrides', function(window, pane)
@@ -171,13 +180,5 @@ local override_keymap = {
 }
 
 table.insert(config.keys, override_keymap)
-```
-
-### tmux
-
-The plugin should play nicely with [tmux](https://github.com/tmux/tmux). Make sure the following setting is in your tmux conf file, [as advised by Wez](https://wezfurlong.org/wezterm/recipes/passing-data.html#user-vars).
-
-```
-set -g allow-passthrough on
 ```
 

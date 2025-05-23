@@ -1,75 +1,82 @@
--- TODO:
--- simple workaround to avoid nvim trying to load this module
--- https://github.com/wez/wezterm/issues/4533#issuecomment-1874094722
--- is there a better alt?
 if vim ~= nil then
-    return
+	return
 end
 
-local wezterm = require('wezterm')
+local wezterm = require("wezterm")
 local M = {}
 
----@param var string
----@return boolean
-local function is_shell_integ_user_var(var)
-    local shell_integ_user_vars = {
-        'WEZTERM_PROG',
-        'WEZTERM_USER',
-        'WEZTERM_HOST',
-        'WEZTERM_IN_TMUX',
-    }
-    for _, val in ipairs(shell_integ_user_vars) do
-        if val == var then
-            return true
-        end
-    end
-    return false
+local function trim_quotes(s)
+	return (s or ""):gsub("^['\"](.-)['\"]$", "%1")
 end
 
----Interpret the Wezterm user var that is passed in and
----make the appropriate changes to the given overrides table.
----@param overrides table The table of configuration overrides.
----@param name string The name of the user variable (intended as the configuration key).
----@param value string The string value of the user variable.
----@return table The modified overrides table.
+local function is_shell_integ_user_var(var)
+	local shell_integ_user_vars = {
+		WEZTERM_PROG = true,
+		WEZTERM_USER = true,
+		WEZTERM_HOST = true,
+		WEZTERM_IN_TMUX = true,
+	}
+	return shell_integ_user_vars[var] == true
+end
+
+--- Interpret the Wezterm user var and make config changes.
+---@param overrides table
+---@param name string
+---@param value string
+---@return table
 function M.override_user_var(overrides, name, value)
-    -- Do nothing for shell integration specific user vars
-    if is_shell_integ_user_var(name) then
-        wezterm.log_info('Skipping shell integration var:', name)
-        return overrides
-    end
+	if is_shell_integ_user_var(name) then
+		wezterm.log_info("Skipping shell integration var:", name)
+		return overrides
+	end
 
-    -- Attempt to parse the value as JSON
-    local success, parsed_json_value = pcall(wezterm.json_parse, value)
+	if name == "font" then
+		local cleaned = trim_quotes(value)
+		local success, font_obj = pcall(wezterm.font, cleaned)
+		if success and font_obj then
+			if font_obj.font and font_obj.font[1] and font_obj.font[1].family then
+				font_obj.font[1].family = trim_quotes(font_obj.font[1].family)
+			end
+			overrides.font = font_obj
+			wezterm.log_info("Applied FONT override. Cleaned value:", cleaned)
+		else
+			wezterm.log_error("Failed to create font object from sanitized input:", cleaned)
+		end
+		return overrides
+	end
 
-    if success then
-        -- Value was valid JSON. parsed_json_value is the Lua equivalent (table, string, number, boolean, nil).
-        overrides[name] = parsed_json_value
-        wezterm.log_info("Successfully parsed JSON for key '", name, "'. Value set to:", parsed_json_value, "(type:", type(parsed_json_value), ")")
-    else
-        -- Value was not valid JSON.
-        -- Treat it as a plain string, but also try to convert to boolean or number
-        -- if it explicitly matches "true", "false", or a numeric pattern.
-        wezterm.log_info("Value for key '", name, "' ('", value, "') is not valid JSON. Attempting direct type conversion.")
-        if value == "true" then
-            overrides[name] = true
-            wezterm.log_info("Converted '", name, "' to boolean: true")
-        elseif value == "false" then
-            overrides[name] = false
-            wezterm.log_info("Converted '", name, "' to boolean: false")
-        else
-            local num = tonumber(value)
-            if num ~= nil then
-                overrides[name] = num
-                wezterm.log_info("Converted '", name, "' to number:", num)
-            else
-                -- Default to treating it as a string if no other conversion fits
-                overrides[name] = value
-                wezterm.log_info("Set '", name, "' to string value:", value)
-            end
-        end
-    end
-    return overrides
+	if name == "font_size" then
+		local size = tonumber(value)
+		if size then
+			overrides.font_size = size
+			wezterm.log_info("Applied FONT_SIZE override. New overrides.font_size:", overrides.font_size)
+		else
+			wezterm.log_error("Invalid font_size value:", value)
+		end
+		return overrides
+	end
+
+	local success, parsed_json_value = pcall(wezterm.json_parse, value)
+	if success then
+		overrides[name] = parsed_json_value
+		wezterm.log_info("Parsed JSON override:", name, parsed_json_value)
+	else
+		if value == "true" then
+			overrides[name] = true
+		elseif value == "false" then
+			overrides[name] = false
+		else
+			local num = tonumber(value)
+			if num ~= nil then
+				overrides[name] = num
+			else
+				overrides[name] = value
+			end
+		end
+		wezterm.log_info("Set override for", name, "=", overrides[name])
+	end
+
+	return overrides
 end
 
 return M
